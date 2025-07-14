@@ -1,0 +1,126 @@
+networks:
+  chmrdmznet:
+    driver: bridge
+  chmrdmpnet:
+    driver: bridge
+
+services:
+  chmr-dmz-redis:
+    image: redis:7
+    networks:
+      - chmrdmznet
+
+  chmr-dmz-dal:
+    build:
+      context: ./src
+      dockerfile: ./dmz/chmr-dmz-dal/Dockerfile
+    env_file:
+      - ./.env
+    networks:
+      - chmrdmznet
+    depends_on:
+      - chmr-dmz-redis # Ensure Redis starts before DAL
+    volumes:
+      - ./common:/common
+      - filedata:/usr/server/app/files
+
+  chmr-intake-web:
+    build:
+      context: ./src
+      dockerfile: ./dmz/chmr-intake-web/Dockerfile
+    env_file:
+      - ./.env
+    ports:
+      - "${PORT_INTAKE}:${PORT_HTTP}" # Expose container's port to the host
+    networks:
+      - chmrdmznet
+    depends_on:
+      - chmr-dmz-dal # Ensure DAL starts before intake-web
+    volumes:
+      - ./common:/common      
+
+  chmr-dmz-maint:
+    build:
+      context: ./src
+      dockerfile: ./dmz/chmr-dmz-maint/Dockerfile
+    env_file:
+      - ./.env
+    ports:
+      - "${PORT_DMZ_MAINT}:${PORT_HTTP}" # Expose maint to the host
+    networks:
+      - chmrdmznet
+    depends_on:
+      - chmr-dmz-dal # Ensure DAL starts before maint
+    volumes:
+      - ./common:/common      
+
+  chmr-report-dispos:
+    build:
+      context: ./src
+      dockerfile: ./dmz/chmr-report-dispos/Dockerfile
+    env_file:
+      - ./.env
+    networks:
+      - chmrdmznet
+    depends_on:
+      - chmr-dmz-dal # Ensure DAL starts before Dispos
+    volumes:
+      - ./common:/common
+
+  chmr-dmp-postgres:
+    build:
+      context: ./src
+      dockerfile: ./dmp/chmr-dmp-postgres/Dockerfile
+    restart: always
+    volumes:
+      - ./postgres-data:/var/lib/postgresql/data
+    networks:
+      - chmrdmpnet
+
+  chmr-dmp-dal:
+    build:
+      context: ./src
+      dockerfile: ./dmp/chmr-dmp-dal/Dockerfile
+    env_file:
+      - ./.env
+    networks:
+      - chmrdmpnet
+    depends_on:
+      - chmr-dmp-postgres
+    volumes:
+      - ./common:/common
+      - filedata:/usr/server/app/files
+
+  chmr-dmp-ingest:
+    build:
+      context: ./src
+      dockerfile: ./dmp/chmr-dmp-ingest/Dockerfile
+    env_file:
+      - ./.env
+    networks:
+      - chmrdmpnet
+    ports:
+      - ${PORT_DMP_INGEST}:${PORT_DMP_INGEST}
+    depends_on:
+      - chmr-dmp-dal
+    volumes:
+      - ./common:/common
+
+  chmr-dmp-api:
+    build:
+      context: ./src
+      dockerfile: ./dmp/chmr-dmp-api/Dockerfile
+    env_file:
+      - ./.env
+    networks:
+      - chmrdmpnet
+    ports:
+      - ${PORT_DMP_API}:${PORT_DMP_API}
+    depends_on:
+      - chmr-dmp-dal
+    volumes:
+      - ./common:/common
+
+volumes:
+  filedata:
+  postgres-data:
